@@ -1,71 +1,69 @@
+const webpack = require('webpack')
+const merge = require('webpack-merge')
 const path = require('path')
 const Css = require('mini-css-extract-plugin')
-const Env = require('dotenv-webpack')
-const webpack = require('webpack')
+const TerserPlugin = require('terser-webpack-plugin')
+const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin')
+const { isDevelop, isTesting } = require('./lib/Stage')
+const Loadable = require('@loadable/webpack-plugin')
+const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
+const Clean = require('clean-webpack-plugin')
+const Copy = require('copy-webpack-plugin')
+const dotenv = require('dotenv').config({ path: path.join(__dirname, '/.env') })
 
-/**
- * Common webpack config for both server and client configs.
- * Every plugin added there runs twice
- */
+const universal = {
+  devtool: 'cheap-module-source-map',
+  mode: isDevelop ? 'development' : 'production',
 
-module.exports = {
-  devtool: 'source-map',
+  stats: {
+    chunks: false, // Makes the build much quieter
+    colors: true, // Shows colors in the console
+    chunkGroups: false,
+    chunkModules: false,
+    modules: false,
+  },
 
   resolve: {
     extensions: ['*', '.js', '.jsx', '.json'],
     modules: ['node_modules'],
     alias: {
+      lib: path.resolve(__dirname, './lib'),
       src: path.resolve(__dirname, './src'),
       api: path.resolve(__dirname, './src/api'),
-      app: path.resolve(__dirname, './src/redux/app'),
       assets: path.resolve(__dirname, './src/assets'),
-      config: path.resolve(__dirname, './config'),
-      constants: path.resolve(__dirname, './src/constants'),
-      controls: path.resolve(__dirname, './src/components/controls'),
       components: path.resolve(__dirname, './src/components'),
-      helpers: path.resolve(__dirname, './helpers'),
+      containers: path.resolve(__dirname, './src/containers'),
       services: path.resolve(__dirname, './src/services'),
-      selectors: path.resolve(__dirname, './src/redux/selectors'),
-      engines: path.resolve(__dirname, './src/redux/engines'),
-      entities: path.resolve(__dirname, './src/redux/app/entities'),
-      setup: path.resolve(__dirname, './setup'),
       shapes: path.resolve(__dirname, './src/shapes'),
-      utils: path.resolve(__dirname, './src/utils')
-    }
+      utils: path.resolve(__dirname, './src/utils'),
+    },
   },
-
   context: __dirname,
-
   performance: {
     maxEntrypointSize: 500000,
     hints: false,
   },
-
+  optimization: {
+    namedModules: true,
+    namedChunks: true,
+    splitChunks: {
+      cacheGroups: {
+        vendor: {
+          test: /node_modules/,
+          chunks: 'initial',
+          name: 'vendor',
+          enforce: true,
+        },
+      },
+    },
+    minimizer: [
+      new TerserPlugin({ cache: true, parallel: true, sourceMap: true }),
+      new OptimizeCSSAssetsPlugin({}),
+    ],
+  },
   module: {
     rules: [
-      /**
-       * Resolve jsx for React components and js for all order javascript code
-       */
-      {
-        test: /\.jsx?$/,
-        exclude: /node_modules/,
-        use: ['babel-loader'],
-      },
-
-      /**
-       * Looks for all css imports
-       */
-      {
-        test: /\.css$/,
-        use: [
-          Css.loader,
-          'css-loader',
-        ],
-      },
-
-      /**
-       * With this loader you can import svg icons. And this will convert svg to jsx code
-       */
+      { test: /\.jsx?$/, exclude: /node_modules/, use: ['babel-loader'] },
       {
         test: /\.svg(\?v=\d+\.\d+\.\d+)?$/,
         use: [
@@ -78,9 +76,58 @@ module.exports = {
           },
         ],
       },
-      /**
-       * With this loader you can import pictures and it will provide path to them
-       */
+    ],
+  },
+  plugins: [
+    new Css({
+      filename: isDevelop ? 'styles/[name].css' : 'styles/[name].[contenthash].css',
+      chunkFilename: isDevelop ? '[id].css' : '[id].[contenthash].css',
+    }),
+  ],
+}
+
+const server = merge(universal, {
+  name: 'server',
+  target: 'node',
+  entry: './src/server',
+  output: {
+    path: path.resolve(__dirname, './dist'),
+    filename: 'server.js',
+    libraryTarget: 'commonjs2',
+  },
+  module: {
+    rules: [
+      { test: /\.css$/, loader: 'ignore-loader' },
+      { test: /\.(jpe?g|png|gif|ico)$/i, loader: 'ignore-loader' },
+    ],
+  },
+  /**
+   * LimitChunkCountPlugin is required.
+   * Without it dynamic imports would also split server build
+   */
+  plugins: [
+    new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
+  ],
+})
+
+const client = merge(universal, {
+  name: 'client',
+  target: 'web',
+  entry: {
+    client: [
+      '@babel/polyfill',
+      ...(isDevelop ? ['webpack-hot-middleware/client?path=/__webpack_hmr&timeout=20000'] : []),
+      './src/client.js',
+    ],
+  },
+  output: {
+    path: path.resolve(__dirname, './dist/public'),
+    publicPath: '/',
+    filename: isDevelop ? `[name].js` : `[name].[hash:3].js`,
+  },
+  module: {
+    rules: [
+      { test: /\.css$/, use: [Css.loader, 'css-loader'] },
       {
         test: /\.(jpe?g|png|gif|ico)$/i,
         use: [
@@ -96,25 +143,14 @@ module.exports = {
       },
     ],
   },
-
   plugins: [
+    ...(isDevelop ? [new webpack.HotModuleReplacementPlugin()] : []),
+    ...(isTesting ? [new BundleAnalyzerPlugin()] : []),
+    new Clean('./public', { root: path.resolve(__dirname, './dist') }),
+    new Copy([{ from: './src/assets', to: './' }]),
+    new Loadable({ writeToDisk: true }),
+    new webpack.DefinePlugin({ 'process.env': JSON.stringify(dotenv.parsed) }),
+  ],
+})
 
-    /**
-     * Enables support for .env files
-     */
-    new Env({ safe: true }),
-
-    /**
-     * Don't know what is's doing. Please contribute and write explanation comment :)
-     */
-    new webpack.NoEmitOnErrorsPlugin(),
-
-    /**
-     * Bundles all css to separate file
-     */
-    new Css({
-      filename: '[name].css',
-      chunkFilename: '[id].css',
-    }),
-  ]
-}
+module.exports = [server, client]

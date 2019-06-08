@@ -1,10 +1,9 @@
 import { applyMiddleware, createStore } from 'redux'
 import promise from 'redux-promise-middleware'
-import { persistStore } from 'redux-persist'
 import { composeWithDevTools } from 'redux-devtools-extension'
 import createSagaMiddleware, { END } from 'redux-saga'
 import rootSaga from 'src/redux/saga'
-import reducers from 'src/redux/app/reducers'
+import reducers from 'src/redux/reducer'
 
 const isClient = typeof window !== 'undefined'
 
@@ -38,14 +37,12 @@ if (isClient) {
 
 if (module.hot) {
   // Enable Webpack hot module replacement for reducers
-  module.hot.accept('./app/reducers', () => {
+  module.hot.accept('./reducer', () => {
     const nextRootReducer = reducers
     store.replaceReducer(nextRootReducer)
   })
 }
 store.runSaga = sagaMiddleware.run
 store.close = () => store.dispatch(END)
-
-export const persistor = isClient && persistStore(store)
 
 export default store

@@ -12,14 +12,6 @@ a {
     text-decoration: none;
 }
 
-#root {
-    height: 100%;
-}
-
-#root > div {
-    height: 100%;
-}
-
 a {
     cursor: pointer;
     text-decoration: none;
@@ -40,4 +32,35 @@ a {
 .flexBetween {
     display: flex;
     justify-content: space-between;
+}
+
+.emoji-mart-bar:last-child {
+    display: none;
+}
+
+.emoji-mart-category .emoji-mart-emoji span:focus {
+    outline: unset;
+}
+
+.emoji-mart .emoji-mart-emoji:focus {
+    outline: unset;
+}
+
+.emoji-mart-category-list li:focus {
+    outline: unset;
+}
+
+
+@keyframes hide {
+    from {
+        opacity: 1;
+    }
+
+    70% {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0.1;
+    }
 }
